@@ -73,7 +73,7 @@ type LocationAreaDetailsResponse struct {
 	} `json:"pokemon_encounters"`
 }
 
-type Pokemom struct {
+type Pokemon struct {
 	Abilities []struct {
 		Ability struct {
 			Name string `json:"name"`
@@ -355,18 +355,18 @@ type Pokemom struct {
 	Weight int `json:"weight"`
 }
 
-func GetPokemom(name string, cache *pokecache.Cache) (*Pokemom, error) {
+func GetPokemon(name string, cache *pokecache.Cache) (*Pokemon, error) {
 	url := fmt.Sprintf("https://pokeapi.co/api/v2/pokemon/%s", name)
 	data, exist := cache.Get(url)
 	if exist {
-		return getResponse[Pokemom](data)
+		return getResponse[Pokemon](data)
 	} else {
 		res, err := requestApi(url)
 		if err != nil {
 			return nil, err
 		}
 		cache.Add(url, res)
-		return getResponse[Pokemom](res)
+		return getResponse[Pokemon](res)
 	}
 }
 

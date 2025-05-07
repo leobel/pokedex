@@ -39,7 +39,7 @@ var initialUrl = "https://pokeapi.co/api/v2/location-area?offset=0limit=20"
 
 var cache = pokecache.NewCache(10 * time.Second)
 
-var capturedPokemoms = map[string]pokeapi.Pokemom{}
+var capturedPokemons = map[string]pokeapi.Pokemon{}
 
 func main() {
 	config := config{
@@ -58,12 +58,12 @@ func main() {
 		},
 		"map": {
 			name:        "map",
-			description: "Display next 20 location areas of the Pokemom world",
+			description: "Display next 20 location areas of the Pokemon world",
 			callback:    commandMapNext,
 		},
 		"mapb": {
 			name:        "mapb",
-			description: "Display previous 20 location areas of the Pokemom world",
+			description: "Display previous 20 location areas of the Pokemon world",
 			callback:    commandMapPrevious,
 		},
 		"explore": {
@@ -73,13 +73,18 @@ func main() {
 		},
 		"catch": {
 			name:        "catch",
-			description: "Trying to catch a Pokemom by name",
+			description: "Trying to catch a Pokemon by name",
 			callback:    commandCatch,
 		},
 		"inspect": {
 			name:        "inspect",
-			description: "Show name, height, weight, stats and type(s) of Pokemom",
+			description: "Show name, height, weight, stats and type(s) of Pokemon",
 			callback:    commandInspect,
+		},
+		"pokedex": {
+			name:        "pokedex",
+			description: "Show all Pokemon you've caught so far",
+			callback:    commandPokedex,
 		},
 	}
 	scanner := bufio.NewScanner(os.Stdin)
@@ -106,48 +111,57 @@ func main() {
 	}
 }
 
-func commandInspect(_c *config, params ...string) error {
+func commandPokedex(*config, ...string) error {
+	fmt.Println("Your Pokedex:")
+	for _, pokemon := range capturedPokemons {
+		fmt.Printf(" - %s\n", pokemon.Name)
+	}
+	return nil
+}
+
+func commandInspect(_ *config, params ...string) error {
 	name := params[0]
-	pokemom, ok := capturedPokemoms[name]
+	pokemon, ok := capturedPokemons[name]
 	if !ok {
 		fmt.Println("you have not caught that pokemon")
 	} else {
-		fmt.Printf("Name: %s\n", pokemom.Name)
-		fmt.Printf("Height: %d\n", pokemom.Height)
-		fmt.Printf("Weight: %d\n", pokemom.Weight)
+		fmt.Printf("Name: %s\n", pokemon.Name)
+		fmt.Printf("Height: %d\n", pokemon.Height)
+		fmt.Printf("Weight: %d\n", pokemon.Weight)
 		fmt.Println("Stats:")
-		for _, stat := range pokemom.Stats {
+		for _, stat := range pokemon.Stats {
 			fmt.Printf(" -%s: %d\n", stat.Stat.Name, stat.BaseStat)
 		}
 		fmt.Println("Types:")
-		for _, t := range pokemom.Types {
+		for _, t := range pokemon.Types {
 			fmt.Printf(" - %s\n", t.Type.Name)
 		}
 	}
 	return nil
 }
 
-func commandCatch(_c *config, params ...string) error {
+func commandCatch(_ *config, params ...string) error {
 	name := params[0]
 	fmt.Printf("Throwing a Pokeball at %s...\n", name)
-	pokemom, err := pokeapi.GetPokemom(name, cache)
+	pokemon, err := pokeapi.GetPokemon(name, cache)
 	if err != nil {
 		return err
 	}
-	if tryToCatchPokemom(pokemom.BaseExperience, 0.005) {
-		capturedPokemoms[name] = *pokemom
+	if tryToCatchPokemon(pokemon.BaseExperience, 0.005) {
+		capturedPokemons[name] = *pokemon
 		fmt.Printf("%s was caught!\n", name)
+		fmt.Println("You may now inspect it with the inspect command.")
 	} else {
 		fmt.Printf("%s escaped!\n", name)
 	}
 	return nil
 }
 
-func tryToCatchPokemom(experience int, lambda float64) bool {
+func tryToCatchPokemon(experience int, lambda float64) bool {
 	return rand.Float64() < math.Exp(-lambda*float64(experience))
 }
 
-func commandExplore(_c *config, params ...string) error {
+func commandExplore(_ *config, params ...string) error {
 	if len(params) == 0 {
 		return errors.New("invalid: no area to explore")
 	}
