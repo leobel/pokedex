@@ -76,6 +76,11 @@ func main() {
 			description: "Trying to catch a Pokemom by name",
 			callback:    commandCatch,
 		},
+		"inspect": {
+			name:        "inspect",
+			description: "Show name, height, weight, stats and type(s) of Pokemom",
+			callback:    commandInspect,
+		},
 	}
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Print("Pokedex > ")
@@ -99,6 +104,27 @@ func main() {
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error reading from input:", err)
 	}
+}
+
+func commandInspect(_c *config, params ...string) error {
+	name := params[0]
+	pokemom, ok := capturedPokemoms[name]
+	if !ok {
+		fmt.Println("you have not caught that pokemon")
+	} else {
+		fmt.Printf("Name: %s\n", pokemom.Name)
+		fmt.Printf("Height: %d\n", pokemom.Height)
+		fmt.Printf("Weight: %d\n", pokemom.Weight)
+		fmt.Println("Stats:")
+		for _, stat := range pokemom.Stats {
+			fmt.Printf(" -%s: %d\n", stat.Stat.Name, stat.BaseStat)
+		}
+		fmt.Println("Types:")
+		for _, t := range pokemom.Types {
+			fmt.Printf(" - %s\n", t.Type.Name)
+		}
+	}
+	return nil
 }
 
 func commandCatch(_c *config, params ...string) error {
