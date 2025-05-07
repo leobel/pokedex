@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -37,10 +39,11 @@ var initialUrl = "https://pokeapi.co/api/v2/location-area?offset=0limit=20"
 
 var cache = pokecache.NewCache(10 * time.Second)
 
+var capturedPokemoms = map[string]pokeapi.Pokemom{}
+
 func main() {
-	next := initialUrl
 	config := config{
-		Next: &next,
+		Next: &initialUrl,
 	}
 	supportedCommands = map[string]cliCommand{
 		"exit": {
@@ -65,8 +68,13 @@ func main() {
 		},
 		"explore": {
 			name:        "explore",
-			description: "list of all the Pokémon located in a specific area",
+			description: "List of all the Pokémon located in a specific area",
 			callback:    commandExplore,
+		},
+		"catch": {
+			name:        "catch",
+			description: "Trying to catch a Pokemom by name",
+			callback:    commandCatch,
 		},
 	}
 	scanner := bufio.NewScanner(os.Stdin)
@@ -91,6 +99,44 @@ func main() {
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error reading from input:", err)
 	}
+}
+
+func commandCatch(_c *config, params ...string) error {
+	name := params[0]
+	fmt.Printf("Throwing a Pokeball at %s...\n", name)
+	pokemom, err := pokeapi.GetPokemom(name, cache)
+	if err != nil {
+		return err
+	}
+	if tryToCatchPokemom(pokemom.BaseExperience, 0.005) {
+		capturedPokemoms[name] = *pokemom
+		fmt.Printf("%s was caught!\n", name)
+	} else {
+		fmt.Printf("%s escaped!\n", name)
+	}
+	return nil
+}
+
+func tryToCatchPokemom(experience int, lambda float64) bool {
+	return rand.Float64() < math.Exp(-lambda*float64(experience))
+}
+
+func commandExplore(_c *config, params ...string) error {
+	if len(params) == 0 {
+		return errors.New("invalid: no area to explore")
+	}
+	area := params[0]
+	fmt.Println("Exploring pastoria-city-area...")
+	response, err := pokeapi.GetLocationAreaDetails(area, cache)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Found Pokemon:")
+	for _, encounter := range response.PokemonEncounters {
+		fmt.Printf(" - %s\n", encounter.Pokemon.Name)
+	}
+
+	return nil
 }
 
 func commandMapNext(c *config, _ ...string) error {
@@ -127,25 +173,6 @@ func commandMap(c *config) error {
 	c.Next, c.Previous = response.Next, response.Previous
 	for _, area := range response.Results {
 		fmt.Println(area.Name)
-	}
-
-	return nil
-}
-
-func commandExplore(_c *config, params ...string) error {
-	if len(params) == 0 {
-		return errors.New("invalid: no area to explore")
-	}
-	area := params[0]
-	url := fmt.Sprintf("https://pokeapi.co/api/v2/location-area/%s", area)
-	fmt.Println("Exploring pastoria-city-area...")
-	response, err := pokeapi.GetLocationAreaDetails(url, cache)
-	if err != nil {
-		return err
-	}
-	fmt.Println("Found Pokemon:")
-	for _, encounter := range response.PokemonEncounters {
-		fmt.Printf(" - %s\n", encounter.Pokemon.Name)
 	}
 
 	return nil
