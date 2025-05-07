@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/leobel/pokedexcli/internal/pokecache"
 )
 
 type LocationAreaResponse struct {
@@ -15,10 +17,91 @@ type LocationAreaResponse struct {
 	Results  []struct {
 		Name string `json:"name"`
 		Url  string `json:"url"`
+	} `json:"results"`
+}
+
+type LocationAreaDetailsResponse struct {
+	EncounterMethodRates []struct {
+		EncounterMethod struct {
+			Name string `json:"name"`
+			URL  string `json:"url"`
+		} `json:"encounter_method"`
+		VersionDetails []struct {
+			Rate    int `json:"rate"`
+			Version struct {
+				Name string `json:"name"`
+				URL  string `json:"url"`
+			} `json:"version"`
+		} `json:"version_details"`
+	} `json:"encounter_method_rates"`
+	GameIndex int `json:"game_index"`
+	ID        int `json:"id"`
+	Location  struct {
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	} `json:"location"`
+	Name  string `json:"name"`
+	Names []struct {
+		Language struct {
+			Name string `json:"name"`
+			URL  string `json:"url"`
+		} `json:"language"`
+		Name string `json:"name"`
+	} `json:"names"`
+	PokemonEncounters []struct {
+		Pokemon struct {
+			Name string `json:"name"`
+			URL  string `json:"url"`
+		} `json:"pokemon"`
+		VersionDetails []struct {
+			EncounterDetails []struct {
+				Chance          int   `json:"chance"`
+				ConditionValues []any `json:"condition_values"`
+				MaxLevel        int   `json:"max_level"`
+				Method          struct {
+					Name string `json:"name"`
+					URL  string `json:"url"`
+				} `json:"method"`
+				MinLevel int `json:"min_level"`
+			} `json:"encounter_details"`
+			MaxChance int `json:"max_chance"`
+			Version   struct {
+				Name string `json:"name"`
+				URL  string `json:"url"`
+			} `json:"version"`
+		} `json:"version_details"`
+	} `json:"pokemon_encounters"`
+}
+
+func GetLocationArea(url string, cache *pokecache.Cache) (*LocationAreaResponse, error) {
+	data, exist := cache.Get(url)
+	if exist {
+		return getResponse[LocationAreaResponse](data)
+	} else {
+		res, err := requestApi(url)
+		if err != nil {
+			return nil, err
+		}
+		cache.Add(url, res)
+		return getResponse[LocationAreaResponse](res)
 	}
 }
 
-func RequestApi(url string) (*LocationAreaResponse, error) {
+func GetLocationAreaDetails(url string, cache *pokecache.Cache) (*LocationAreaDetailsResponse, error) {
+	data, exist := cache.Get(url)
+	if exist {
+		return getResponse[LocationAreaDetailsResponse](data)
+	} else {
+		res, err := requestApi(url)
+		if err != nil {
+			return nil, err
+		}
+		cache.Add(url, res)
+		return getResponse[LocationAreaDetailsResponse](res)
+	}
+}
+
+func requestApi(url string) ([]byte, error) {
 	res, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -31,11 +114,14 @@ func RequestApi(url string) (*LocationAreaResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	response := LocationAreaResponse{}
-	err = json.Unmarshal(body, &response)
-	if err != nil {
+
+	return body, nil
+}
+
+func getResponse[T any](data []byte) (*T, error) {
+	var response T
+	if err := json.Unmarshal(data, &response); err != nil {
 		return nil, err
 	}
-
 	return &response, nil
 }

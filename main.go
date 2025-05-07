@@ -6,14 +6,16 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/leobel/pokedexcli/internal/pokeapi"
+	"github.com/leobel/pokedexcli/internal/pokecache"
 )
 
 type cliCommand struct {
 	name        string
 	description string
-	callback    func(*config) error
+	callback    func(*config, ...string) error
 }
 
 type LocationAreaDirection int
@@ -31,7 +33,9 @@ type config struct {
 
 var supportedCommands map[string]cliCommand
 
-var initialUrl = "https://pokeapi.co/api/v2/location-area"
+var initialUrl = "https://pokeapi.co/api/v2/location-area?offset=0limit=20"
+
+var cache = pokecache.NewCache(10 * time.Second)
 
 func main() {
 	next := initialUrl
@@ -59,6 +63,11 @@ func main() {
 			description: "Display previous 20 location areas of the Pokemom world",
 			callback:    commandMapPrevious,
 		},
+		"explore": {
+			name:        "explore",
+			description: "list of all the Pokémon located in a specific area",
+			callback:    commandExplore,
+		},
 	}
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Print("Pokedex > ")
@@ -69,7 +78,7 @@ func main() {
 			cmd := inputs[0]
 			cli, ok := supportedCommands[cmd]
 			if ok {
-				if err := cli.callback(&config); err != nil {
+				if err := cli.callback(&config, inputs[1:]...); err != nil {
 					fmt.Println(err)
 					os.Exit(0)
 				}
@@ -84,7 +93,7 @@ func main() {
 	}
 }
 
-func commandMapNext(c *config) error {
+func commandMapNext(c *config, _ ...string) error {
 	c.Dir = Next
 	if c.Next != nil {
 		return commandMap(c)
@@ -94,7 +103,7 @@ func commandMapNext(c *config) error {
 	}
 }
 
-func commandMapPrevious(c *config) error {
+func commandMapPrevious(c *config, _ ...string) error {
 	c.Dir = Previous
 	if c.Previous != nil {
 		return commandMap(c)
@@ -111,7 +120,7 @@ func commandMap(c *config) error {
 	} else {
 		url = c.Next
 	}
-	response, err := pokeapi.RequestApi(*url)
+	response, err := pokeapi.GetLocationArea(*url, cache)
 	if err != nil {
 		return err
 	}
@@ -123,7 +132,26 @@ func commandMap(c *config) error {
 	return nil
 }
 
-func commandHelp(*config) error {
+func commandExplore(_c *config, params ...string) error {
+	if len(params) == 0 {
+		return errors.New("invalid: no area to explore")
+	}
+	area := params[0]
+	url := fmt.Sprintf("https://pokeapi.co/api/v2/location-area/%s", area)
+	fmt.Println("Exploring pastoria-city-area...")
+	response, err := pokeapi.GetLocationAreaDetails(url, cache)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Found Pokemon:")
+	for _, encounter := range response.PokemonEncounters {
+		fmt.Printf(" - %s\n", encounter.Pokemon.Name)
+	}
+
+	return nil
+}
+
+func commandHelp(*config, ...string) error {
 	fmt.Println("Welcome to the Pokedex!")
 	fmt.Println("Usage:")
 	fmt.Println()
@@ -133,7 +161,8 @@ func commandHelp(*config) error {
 	return nil
 }
 
-func commandExit(*config) error {
+func commandExit(*config, ...string) error {
+	cache.Stop()
 	return errors.New("Closing the Pokedex... Goodbye!")
 }
 
