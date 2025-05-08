@@ -64,7 +64,6 @@ func (c *Cache) reapLoop(interval time.Duration) {
 			return
 		case t := <-ticker.C:
 			threshold := t.Add(-1 * interval)
-			// fmt.Println("Remove all keys created after time: ", threshold)
 			c.cleanCache(threshold)
 		}
 	}
