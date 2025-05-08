@@ -1,7 +1,6 @@
 package pokecache
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -52,7 +51,6 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 func (c *Cache) Stop() {
 	close(c.done)
 	c.wg.Wait()
-	fmt.Println("Cache Stopped")
 }
 
 func (c *Cache) reapLoop(interval time.Duration) {
@@ -63,7 +61,6 @@ func (c *Cache) reapLoop(interval time.Duration) {
 	for {
 		select {
 		case <-c.done:
-			fmt.Println("Cache is Done!")
 			return
 		case t := <-ticker.C:
 			threshold := t.Add(-1 * interval)

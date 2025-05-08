@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"math"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/leobel/pokedexcli/internal/pokeapi"
 	"github.com/leobel/pokedexcli/internal/pokecache"
+	"github.com/leobel/pokedexcli/internal/termscanner"
 )
 
 type cliCommand struct {
@@ -53,7 +53,7 @@ func main() {
 		},
 		"help": {
 			name:        "help",
-			description: "Displays a help message",
+			description: "Displays this help message",
 			callback:    commandHelp,
 		},
 		"map": {
@@ -87,8 +87,8 @@ func main() {
 			callback:    commandPokedex,
 		},
 	}
-	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Print("Pokedex > ")
+	scanner := termscanner.New("Pokedex > ", os.Stdin)
+
 	for scanner.Scan() {
 		text := scanner.Text()
 		inputs := cleanInput(text)
@@ -104,11 +104,13 @@ func main() {
 				fmt.Println("Unknown command")
 			}
 		}
-		fmt.Print("Pokedex > ")
 	}
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error reading from input:", err)
 	}
+	err := commandExit(&config)
+	fmt.Println(err)
+	os.Exit(0)
 }
 
 func commandPokedex(*config, ...string) error {
