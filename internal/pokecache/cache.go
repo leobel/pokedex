@@ -5,7 +5,12 @@ import (
 	"time"
 )
 
-type Cache struct {
+type Cache interface {
+	Get(key string) ([]byte, bool)
+	Add(key string, val []byte)
+}
+
+type PokeCache struct {
 	items map[string]cacheEntry
 	done  chan bool
 	wg    sync.WaitGroup
@@ -17,8 +22,8 @@ type cacheEntry struct {
 	val       []byte
 }
 
-func NewCache(interval time.Duration) *Cache {
-	cache := &Cache{
+func NewCache(interval time.Duration) *PokeCache {
+	cache := &PokeCache{
 		items: make(map[string]cacheEntry),
 		done:  make(chan bool),
 		mux:   &sync.RWMutex{},
@@ -28,7 +33,7 @@ func NewCache(interval time.Duration) *Cache {
 	return cache
 }
 
-func (c *Cache) Add(key string, val []byte) {
+func (c *PokeCache) Add(key string, val []byte) {
 	c.mux.Lock()
 	c.items[key] = cacheEntry{
 		createdAt: time.Now(),
@@ -37,7 +42,7 @@ func (c *Cache) Add(key string, val []byte) {
 	c.mux.Unlock()
 }
 
-func (c *Cache) Get(key string) ([]byte, bool) {
+func (c *PokeCache) Get(key string) ([]byte, bool) {
 	c.mux.RLock()
 	entry, ok := c.items[key]
 	c.mux.RUnlock()
@@ -48,12 +53,12 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 	}
 }
 
-func (c *Cache) Stop() {
+func (c *PokeCache) Stop() {
 	close(c.done)
 	c.wg.Wait()
 }
 
-func (c *Cache) reapLoop(interval time.Duration) {
+func (c *PokeCache) reapLoop(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	defer c.wg.Done()
@@ -70,7 +75,7 @@ func (c *Cache) reapLoop(interval time.Duration) {
 
 }
 
-func (c *Cache) cleanCache(t time.Time) {
+func (c *PokeCache) cleanCache(t time.Time) {
 	c.mux.RLock()
 	for key, entry := range c.items {
 		if entry.createdAt.Compare(t) <= 0 {

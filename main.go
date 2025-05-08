@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,9 +37,11 @@ type config struct {
 
 var supportedCommands map[string]cliCommand
 
-var initialUrl = "https://pokeapi.co/api/v2/location-area?offset=0limit=20"
+var initialUrl = "https://pokeapi.co/api/v2/location-area?offset=0&limit=20"
 
 var cache = pokecache.NewCache(10 * time.Second)
+
+var api = pokeapi.NewPokeApi("https://pokeapi.co/api/v2")
 
 var capturedPokemons = map[string]pokeapi.Pokemon{}
 
@@ -145,7 +149,7 @@ func commandInspect(_ *config, params ...string) error {
 func commandCatch(_ *config, params ...string) error {
 	name := params[0]
 	fmt.Printf("Throwing a Pokeball at %s...\n", name)
-	pokemon, err := pokeapi.GetPokemon(name, cache)
+	pokemon, err := api.GetPokemon(name, cache)
 	if err != nil {
 		return err
 	}
@@ -169,7 +173,7 @@ func commandExplore(_ *config, params ...string) error {
 	}
 	area := params[0]
 	fmt.Println("Exploring pastoria-city-area...")
-	response, err := pokeapi.GetLocationAreaDetails(area, cache)
+	response, err := api.GetLocationAreaDetails(area, cache)
 	if err != nil {
 		return err
 	}
@@ -202,13 +206,22 @@ func commandMapPrevious(c *config, _ ...string) error {
 }
 
 func commandMap(c *config) error {
-	var url *string
+	var rawUrl *string
 	if c.Dir == Previous {
-		url = c.Previous
+		rawUrl = c.Previous
 	} else {
-		url = c.Next
+		rawUrl = c.Next
 	}
-	response, err := pokeapi.GetLocationArea(*url, cache)
+	parsedUrl, err := url.Parse(*rawUrl)
+	if err != nil {
+		panic(err)
+	}
+	query := parsedUrl.Query()
+	offset, err := strconv.Atoi(query.Get("offset"))
+	if err != nil {
+		return err
+	}
+	response, err := api.GetLocationArea(offset, cache)
 	if err != nil {
 		return err
 	}
