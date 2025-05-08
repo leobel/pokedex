@@ -8,6 +8,7 @@ import (
 type Cache interface {
 	Get(key string) ([]byte, bool)
 	Add(key string, val []byte)
+	Stop()
 }
 
 type PokeCache struct {
@@ -56,6 +57,7 @@ func (c *PokeCache) Get(key string) ([]byte, bool) {
 func (c *PokeCache) Stop() {
 	close(c.done)
 	c.wg.Wait()
+	c.items = map[string]cacheEntry{}
 }
 
 func (c *PokeCache) reapLoop(interval time.Duration) {

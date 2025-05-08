@@ -3,10 +3,32 @@ package termscanner
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os"
+	"slices"
 
 	"golang.org/x/term"
 )
+
+// Term is the subset of x/term you need.
+type Term interface {
+	IsTerminal(fd int) bool
+	MakeRaw(fd int) (*term.State, error)
+	Restore(fd int, state *term.State) error
+}
+
+// RealTerm implements Term using x/term.
+type RealTerm struct{}
+
+func (RealTerm) IsTerminal(fd int) bool                  { return term.IsTerminal(fd) }
+func (RealTerm) MakeRaw(fd int) (*term.State, error)     { return term.MakeRaw(fd) }
+func (RealTerm) Restore(fd int, state *term.State) error { return term.Restore(fd, state) }
+
+type PokedexScanner interface {
+	Scan() bool
+	Text() string
+	Err() error
+}
 
 type TermScanner struct {
 	fd      uintptr
@@ -14,13 +36,15 @@ type TermScanner struct {
 	cmd     string
 	history []string
 	index   int
+	term    Term
 }
 
-func New(prompt string, f *os.File) *TermScanner {
+func New(prompt string, f *os.File, term Term) *TermScanner {
 	ts := &TermScanner{
 		fd:     f.Fd(),
 		prompt: prompt,
 		index:  -1,
+		term:   term,
 	}
 	return ts
 }
@@ -29,11 +53,11 @@ func (ts *TermScanner) Scan() bool {
 	result := func() bool {
 		fmt.Print(ts.prompt)
 		var buf = bytes.Buffer{}
-		oldState, err := term.MakeRaw(int(ts.fd))
+		oldState, err := ts.term.MakeRaw(int(ts.fd))
 		if err != nil {
 			panic(err)
 		}
-		defer term.Restore(int(ts.fd), oldState)
+		defer ts.term.Restore(int(ts.fd), oldState)
 		for {
 			b := make([]byte, 3)
 			n, err := os.Stdin.Read(b)
@@ -73,21 +97,22 @@ func (ts *TermScanner) Scan() bool {
 					ts.redrawLine(&buf)
 				}
 
-			case seq[0] == '\r' || seq[0] == '\n':
+			case slices.Index(seq, '\r') >= 0 || slices.Index(seq, '\n') >= 0:
+				index := int(math.Max(float64(slices.Index(seq, '\r')), float64(slices.Index(seq, '\n'))))
+				buf.Write(seq[0:index])
 				// Enter pressed
 				command := buf.String()
+				ts.cmd = command
 				if command != "" {
 					ts.cmd = command
-					ts.history = append(ts.history, command)
+					if size := len(ts.history); size == 0 || ts.history[size-1] != command {
+						ts.history = append(ts.history, command)
+					}
 					ts.index = len(ts.history)
-					buf.Reset()
-					fmt.Print("\r\n")
-					return true
-				} else {
-					// new prompt line
-					fmt.Print("\r\n")
-					ts.redrawLine(&buf)
 				}
+				buf.Reset()
+				fmt.Print("\r\n")
+				return true
 
 			case seq[0] == 127:
 				// Backspace

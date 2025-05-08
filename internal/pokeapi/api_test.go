@@ -27,6 +27,10 @@ func (c *MockCache) Add(key string, val []byte) {
 	c.store[key] = val
 }
 
+func (c *MockCache) Stop() {
+
+}
+
 func TestNewPokeApi(t *testing.T) {
 	// arrange
 	baseUrl := "https://pokeapi.co/api/v2"

@@ -1,11 +1,35 @@
-package main
+package repl_test
 
 import (
 	"testing"
+
+	"github.com/leobel/pokedexcli/internal/repl"
+	"github.com/leobel/pokedexcli/internal/termscanner"
 )
+
+type MockScanner struct {
+	termscanner.PokedexScanner
+}
+
+func NewMockScanner() *MockScanner {
+	return &MockScanner{}
+}
+
+func (c *MockScanner) Scan() bool {
+	return true
+}
+
+func (c *MockScanner) Text() string {
+	return "mock scanner"
+}
+
+func (c *MockScanner) Err() error {
+	return nil
+}
 
 func TestCleanInput(t *testing.T) {
 	// arrange
+	replCli := repl.NewRepl(NewMockScanner())
 	cases := []struct {
 		input    string
 		expected []string
@@ -30,7 +54,7 @@ func TestCleanInput(t *testing.T) {
 
 	// act
 	for _, c := range cases {
-		actual := cleanInput(c.input)
+		actual := replCli.CleanInput(c.input)
 
 		if len(c.expected) != len(actual) {
 			t.Errorf("Invalid clean input size, expected: %v, but got: %v", len(c.expected), len(actual))

@@ -20,6 +20,30 @@ type LocationAreaResponse struct {
 	} `json:"results"`
 }
 
+type PokemonEncounters struct {
+	Pokemon struct {
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	} `json:"pokemon"`
+	VersionDetails []struct {
+		EncounterDetails []struct {
+			Chance          int   `json:"chance"`
+			ConditionValues []any `json:"condition_values"`
+			MaxLevel        int   `json:"max_level"`
+			Method          struct {
+				Name string `json:"name"`
+				URL  string `json:"url"`
+			} `json:"method"`
+			MinLevel int `json:"min_level"`
+		} `json:"encounter_details"`
+		MaxChance int `json:"max_chance"`
+		Version   struct {
+			Name string `json:"name"`
+			URL  string `json:"url"`
+		} `json:"version"`
+	} `json:"version_details"`
+}
+
 type LocationAreaDetailsResponse struct {
 	EncounterMethodRates []struct {
 		EncounterMethod struct {
@@ -48,29 +72,7 @@ type LocationAreaDetailsResponse struct {
 		} `json:"language"`
 		Name string `json:"name"`
 	} `json:"names"`
-	PokemonEncounters []struct {
-		Pokemon struct {
-			Name string `json:"name"`
-			URL  string `json:"url"`
-		} `json:"pokemon"`
-		VersionDetails []struct {
-			EncounterDetails []struct {
-				Chance          int   `json:"chance"`
-				ConditionValues []any `json:"condition_values"`
-				MaxLevel        int   `json:"max_level"`
-				Method          struct {
-					Name string `json:"name"`
-					URL  string `json:"url"`
-				} `json:"method"`
-				MinLevel int `json:"min_level"`
-			} `json:"encounter_details"`
-			MaxChance int `json:"max_chance"`
-			Version   struct {
-				Name string `json:"name"`
-				URL  string `json:"url"`
-			} `json:"version"`
-		} `json:"version_details"`
-	} `json:"pokemon_encounters"`
+	PokemonEncounters []PokemonEncounters `json:"pokemon_encounters"`
 }
 
 type Pokemon struct {
@@ -373,6 +375,14 @@ func WithLimit(limit int) limitOption {
 	return limitOption(limit)
 }
 
+type Api interface {
+	GetPokemon(name string, cache pokecache.Cache) (*Pokemon, error)
+	GetLocationAreaDetails(area string, cache pokecache.Cache) (*LocationAreaDetailsResponse, error)
+	GetLocationArea(offset int, cache pokecache.Cache) (*LocationAreaResponse, error)
+	GetBaseUrl() string
+	GetConfig() Config
+}
+
 type PokeApi struct {
 	BaseUrl string // e.g: https://pokeapi.co/api/v2
 	Config  Config
@@ -391,6 +401,14 @@ func NewPokeApi(url string, opts ...Option) PokeApi {
 		BaseUrl: url,
 		Config:  config,
 	}
+}
+
+func (api PokeApi) GetBaseUrl() string {
+	return api.BaseUrl
+}
+
+func (api PokeApi) GetConfig() Config {
+	return api.Config
 }
 
 func (api PokeApi) GetPokemon(name string, cache pokecache.Cache) (*Pokemon, error) {

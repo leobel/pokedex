@@ -1,254 +1,75 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"math"
-	"math/rand"
-	"net/url"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
+	"github.com/leobel/pokedexcli/internal/commands"
 	"github.com/leobel/pokedexcli/internal/pokeapi"
 	"github.com/leobel/pokedexcli/internal/pokecache"
+	"github.com/leobel/pokedexcli/internal/repl"
 	"github.com/leobel/pokedexcli/internal/termscanner"
 )
 
-type cliCommand struct {
-	name        string
-	description string
-	callback    func(*config, ...string) error
-}
-
-type LocationAreaDirection int
-
-const (
-	Previous LocationAreaDirection = iota
-	Next
-)
-
-type config struct {
-	Dir      LocationAreaDirection
-	Previous *string
-	Next     *string
-}
-
-var supportedCommands map[string]cliCommand
-
-var initialUrl = "https://pokeapi.co/api/v2/location-area?offset=0&limit=20"
-
-var cache = pokecache.NewCache(10 * time.Second)
-
-var api = pokeapi.NewPokeApi("https://pokeapi.co/api/v2")
-
-var capturedPokemons = map[string]pokeapi.Pokemon{}
+var supportedCommands map[string]repl.CliCommand
 
 func main() {
-	config := config{
-		Next: &initialUrl,
-	}
-	supportedCommands = map[string]cliCommand{
+	cache := pokecache.NewCache(10 * time.Second)
+	api := pokeapi.NewPokeApi("https://pokeapi.co/api/v2")
+
+	helpCmd := commands.NewCommandHelp(&supportedCommands)
+	exitCmd := commands.NewCommandExit(cache)
+	mapCmd := commands.NewCommandMap(api, cache)
+	pokedexCmd := commands.NewCommandPokedex(api, cache)
+
+	supportedCommands = map[string]repl.CliCommand{
 		"exit": {
-			name:        "exit",
-			description: "Exit the Pokedex",
-			callback:    commandExit,
+			Name:        "exit",
+			Description: "Exit the Pokedex",
+			Callback:    exitCmd.Exit,
 		},
 		"help": {
-			name:        "help",
-			description: "Displays this help message",
-			callback:    commandHelp,
+			Name:        "help",
+			Description: "Displays this help message",
+			Callback:    helpCmd.Help,
 		},
 		"map": {
-			name:        "map",
-			description: "Display next 20 location areas of the Pokemon world",
-			callback:    commandMapNext,
+			Name:        "map",
+			Description: fmt.Sprintf("Display next %d location areas of the Pokemon world", api.Config.Limit),
+			Callback:    mapCmd.NextArea(),
 		},
 		"mapb": {
-			name:        "mapb",
-			description: "Display previous 20 location areas of the Pokemon world",
-			callback:    commandMapPrevious,
+			Name:        "mapb",
+			Description: fmt.Sprintf("Display previous %d location areas of the Pokemon world", api.Config.Limit),
+			Callback:    mapCmd.PreviousArea(),
 		},
 		"explore": {
-			name:        "explore",
-			description: "List of all the Pokémon located in a specific area",
-			callback:    commandExplore,
+			Name:        "explore",
+			Description: "List of all the Pokemons located in a specific area",
+			Callback:    mapCmd.ExploreArea,
 		},
 		"catch": {
-			name:        "catch",
-			description: "Trying to catch a Pokemon by name",
-			callback:    commandCatch,
+			Name:        "catch",
+			Description: "Trying to catch a Pokemon by name",
+			Callback:    pokedexCmd.CatchPokemon,
 		},
 		"inspect": {
-			name:        "inspect",
-			description: "Show name, height, weight, stats and type(s) of Pokemon",
-			callback:    commandInspect,
+			Name:        "inspect",
+			Description: "Show name, height, weight, stats and type(s) of Pokemon",
+			Callback:    pokedexCmd.InspectPokemon,
 		},
 		"pokedex": {
-			name:        "pokedex",
-			description: "Show all Pokemon you've caught so far",
-			callback:    commandPokedex,
+			Name:        "pokedex",
+			Description: "Show all Pokemon you've caught so far",
+			Callback:    pokedexCmd.ShowPokemons,
 		},
 	}
-	scanner := termscanner.New("Pokedex > ", os.Stdin)
 
-	for scanner.Scan() {
-		text := scanner.Text()
-		inputs := cleanInput(text)
-		if len(inputs) > 0 {
-			cmd := inputs[0]
-			cli, ok := supportedCommands[cmd]
-			if ok {
-				if err := cli.callback(&config, inputs[1:]...); err != nil {
-					fmt.Println(err)
-					os.Exit(0)
-				}
-			} else {
-				fmt.Println("Unknown command")
-			}
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "Error reading from input:", err)
-	}
-	err := commandExit(&config)
-	fmt.Println(err)
-	os.Exit(0)
-}
+	scanner := termscanner.New("Pokedex > ", os.Stdin, termscanner.RealTerm{})
 
-func commandPokedex(*config, ...string) error {
-	fmt.Println("Your Pokedex:")
-	for _, pokemon := range capturedPokemons {
-		fmt.Printf(" - %s\n", pokemon.Name)
-	}
-	return nil
-}
+	cliRepl := repl.NewRepl(scanner)
 
-func commandInspect(_ *config, params ...string) error {
-	name := params[0]
-	pokemon, ok := capturedPokemons[name]
-	if !ok {
-		fmt.Println("you have not caught that pokemon")
-	} else {
-		fmt.Printf("Name: %s\n", pokemon.Name)
-		fmt.Printf("Height: %d\n", pokemon.Height)
-		fmt.Printf("Weight: %d\n", pokemon.Weight)
-		fmt.Println("Stats:")
-		for _, stat := range pokemon.Stats {
-			fmt.Printf(" -%s: %d\n", stat.Stat.Name, stat.BaseStat)
-		}
-		fmt.Println("Types:")
-		for _, t := range pokemon.Types {
-			fmt.Printf(" - %s\n", t.Type.Name)
-		}
-	}
-	return nil
-}
-
-func commandCatch(_ *config, params ...string) error {
-	name := params[0]
-	fmt.Printf("Throwing a Pokeball at %s...\n", name)
-	pokemon, err := api.GetPokemon(name, cache)
-	if err != nil {
-		return err
-	}
-	if tryToCatchPokemon(pokemon.BaseExperience, 0.005) {
-		capturedPokemons[name] = *pokemon
-		fmt.Printf("%s was caught!\n", name)
-		fmt.Println("You may now inspect it with the inspect command.")
-	} else {
-		fmt.Printf("%s escaped!\n", name)
-	}
-	return nil
-}
-
-func tryToCatchPokemon(experience int, lambda float64) bool {
-	return rand.Float64() < math.Exp(-lambda*float64(experience))
-}
-
-func commandExplore(_ *config, params ...string) error {
-	if len(params) == 0 {
-		return errors.New("invalid: no area to explore")
-	}
-	area := params[0]
-	fmt.Println("Exploring pastoria-city-area...")
-	response, err := api.GetLocationAreaDetails(area, cache)
-	if err != nil {
-		return err
-	}
-	fmt.Println("Found Pokemon:")
-	for _, encounter := range response.PokemonEncounters {
-		fmt.Printf(" - %s\n", encounter.Pokemon.Name)
-	}
-
-	return nil
-}
-
-func commandMapNext(c *config, _ ...string) error {
-	c.Dir = Next
-	if c.Next != nil {
-		return commandMap(c)
-	} else {
-		fmt.Println("you're on the last page, consider using command: `mapb` (map back) to display previous 20 locations")
-		return nil
-	}
-}
-
-func commandMapPrevious(c *config, _ ...string) error {
-	c.Dir = Previous
-	if c.Previous != nil {
-		return commandMap(c)
-	} else {
-		fmt.Println("you're on the first page, consider using command: `map` (map forward) to display next 20 locations")
-		return nil
-	}
-}
-
-func commandMap(c *config) error {
-	var rawUrl *string
-	if c.Dir == Previous {
-		rawUrl = c.Previous
-	} else {
-		rawUrl = c.Next
-	}
-	parsedUrl, err := url.Parse(*rawUrl)
-	if err != nil {
-		panic(err)
-	}
-	query := parsedUrl.Query()
-	offset, err := strconv.Atoi(query.Get("offset"))
-	if err != nil {
-		return err
-	}
-	response, err := api.GetLocationArea(offset, cache)
-	if err != nil {
-		return err
-	}
-	c.Next, c.Previous = response.Next, response.Previous
-	for _, area := range response.Results {
-		fmt.Println(area.Name)
-	}
-
-	return nil
-}
-
-func commandHelp(*config, ...string) error {
-	fmt.Println("Welcome to the Pokedex!")
-	fmt.Println("Usage:")
-	fmt.Println()
-	for key, value := range supportedCommands {
-		fmt.Printf("%s: %s\n", key, value.description)
-	}
-	return nil
-}
-
-func commandExit(*config, ...string) error {
-	cache.Stop()
-	return errors.New("Closing the Pokedex... Goodbye!")
-}
-
-func cleanInput(text string) []string {
-	cleanText := strings.Trim(text, " ")
-	return strings.Fields(strings.ToLower(cleanText))
+	// init REPL cli
+	cliRepl.Init(supportedCommands)
 }
