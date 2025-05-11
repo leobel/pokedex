@@ -26,5 +26,6 @@ func (c *CommandHelp) Help(...string) error {
 	for _, key := range keys {
 		fmt.Printf("%s: %s\n", key, cmds[key].Description)
 	}
+	fmt.Println("Up/Down keys: Use it to navigate between previous and next commands")
 	return nil
 }
