@@ -36,37 +36,43 @@ func TestNewPokeApi(t *testing.T) {
 	baseUrl := "https://pokeapi.co/api/v2"
 	type ctr struct {
 		baseUrl string
+		cache   *MockCache
 		opts    []pokeapi.Option
 	}
+	cache := NewMockCache()
 	cases := []struct {
 		actual   ctr
-		expected pokeapi.PokeApi
+		expected pokeapi.PokeApi[*MockCache]
 	}{
 		{
 			actual: ctr{
 				baseUrl: baseUrl,
+				cache:   cache,
 				opts:    []pokeapi.Option{},
 			},
-			expected: pokeapi.PokeApi{
+			expected: pokeapi.PokeApi[*MockCache]{
 				BaseUrl: baseUrl,
 				Config:  pokeapi.Config{Limit: 20},
+				Cache:   cache,
 			},
 		},
 		{
 			actual: ctr{
 				baseUrl: baseUrl,
+				cache:   cache,
 				opts:    []pokeapi.Option{pokeapi.WithLimit(10)},
 			},
-			expected: pokeapi.PokeApi{
+			expected: pokeapi.PokeApi[*MockCache]{
 				BaseUrl: baseUrl,
 				Config:  pokeapi.Config{Limit: 10},
+				Cache:   cache,
 			},
 		},
 	}
 
 	for _, c := range cases {
 		// act
-		api := pokeapi.NewPokeApi(c.actual.baseUrl, c.actual.opts...)
+		api := pokeapi.NewPokeApi(c.actual.baseUrl, c.actual.cache, c.actual.opts...)
 
 		// assert
 		if c.expected != api {
@@ -86,13 +92,10 @@ func TestGetLocationAreaFromApi(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	api := pokeapi.PokeApi{
-		BaseUrl: ts.URL,
-		Config:  pokeapi.Config{Limit: 20},
-	}
+	api := pokeapi.NewPokeApi(ts.URL, cache, pokeapi.WithLimit(20))
 
 	// act
-	r, err := api.GetLocationArea(0, cache)
+	r, err := api.GetLocationArea(0)
 
 	// assert
 	if err != nil || r.Count != 1 {
@@ -110,22 +113,18 @@ func TestGetLocationAreaFromCache(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	api := pokeapi.PokeApi{
-		BaseUrl: ts.URL,
-		Config:  pokeapi.Config{Limit: 20},
-	}
+	api := pokeapi.NewPokeApi(ts.URL, cache, pokeapi.WithLimit(20))
 
 	cacheData, _ := json.Marshal(pokeapi.LocationAreaResponse{Count: 10})
 	cache.Add(fmt.Sprintf("%s/location-area?offset=%d&limit=%d", api.BaseUrl, 0, api.Config.Limit), cacheData)
 
 	// act
-	r, err := api.GetLocationArea(0, cache)
+	r, err := api.GetLocationArea(0)
 
 	// assert
 	if err != nil || r.Count != 10 {
 		t.Errorf("unexpected: %v, err: %v", r, err)
 	}
-
 }
 
 func TestGetLocationAreaDetailsFromApi(t *testing.T) {
@@ -139,13 +138,10 @@ func TestGetLocationAreaDetailsFromApi(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	api := pokeapi.PokeApi{
-		BaseUrl: ts.URL,
-		Config:  pokeapi.Config{Limit: 20},
-	}
+	api := pokeapi.NewPokeApi(ts.URL, cache, pokeapi.WithLimit(20))
 
 	// act
-	d, err := api.GetLocationAreaDetails(name, cache)
+	d, err := api.GetLocationAreaDetails(name)
 
 	// assert
 	if err != nil || d.Name != name {
@@ -164,17 +160,14 @@ func TestGetLocationAreaDetailsFromCache(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	api := pokeapi.PokeApi{
-		BaseUrl: ts.URL,
-		Config:  pokeapi.Config{Limit: 20},
-	}
+	api := pokeapi.NewPokeApi(ts.URL, cache, pokeapi.WithLimit(20))
 
 	cacheName := "solaceon-ruins-b3f-e"
 	cacheData, _ := json.Marshal(pokeapi.LocationAreaDetailsResponse{Name: cacheName})
 	cache.Add(fmt.Sprintf("%s/location-area/%s", api.BaseUrl, cacheName), cacheData)
 
 	// act
-	d, err := api.GetLocationAreaDetails(cacheName, cache)
+	d, err := api.GetLocationAreaDetails(cacheName)
 
 	// assert
 	if err != nil || d.Name != cacheName {
@@ -192,9 +185,9 @@ func TestGetPokemonFromApi(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	api := pokeapi.PokeApi{BaseUrl: ts.URL}
+	api := pokeapi.NewPokeApi(ts.URL, cache)
 
-	p, err := api.GetPokemon(name, cache)
+	p, err := api.GetPokemon(name)
 	if err != nil || p.Name != name {
 		t.Errorf("unexpected result: %v, err: %v", p, err)
 	}
@@ -210,13 +203,13 @@ func TestGetPokemonFromCache(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	api := pokeapi.PokeApi{BaseUrl: ts.URL}
+	api := pokeapi.NewPokeApi(ts.URL, cache)
 
 	cacheName := "nosepass"
 	cacheData, _ := json.Marshal(pokeapi.Pokemon{Name: cacheName})
 	cache.Add(fmt.Sprintf("%s/pokemon/%s", api.BaseUrl, cacheName), cacheData)
 
-	p, err := api.GetPokemon(cacheName, cache)
+	p, err := api.GetPokemon(cacheName)
 	if err != nil || p.Name != cacheName {
 		t.Errorf("unexpected result: %v, err: %v", p, err)
 	}
@@ -230,23 +223,23 @@ func TestApiHttpStatusError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	api := pokeapi.PokeApi{BaseUrl: ts.URL}
+	api := pokeapi.NewPokeApi(ts.URL, cache)
 
 	t.Run("returns GetPokemon error", func(t *testing.T) {
-		_, err := api.GetPokemon("pikachu", cache)
+		_, err := api.GetPokemon("pikachu")
 		if err == nil || len(cache.store) > 0 {
 			t.Errorf("expected error and no item added to cache: %v, err: %v", len(cache.store), err)
 		}
 	})
 	t.Run("returns GetLocationArea error", func(t *testing.T) {
-		_, err := api.GetLocationArea(0, cache)
+		_, err := api.GetLocationArea(0)
 		if err == nil || len(cache.store) > 0 {
 			t.Errorf("expected error and no item added to cache: %v, err: %v", len(cache.store), err)
 		}
 	})
 
 	t.Run("returns GetLocationAreaDetails error", func(t *testing.T) {
-		_, err := api.GetLocationAreaDetails("canalave-city-area", cache)
+		_, err := api.GetLocationAreaDetails("canalave-city-area")
 		if err == nil || len(cache.store) > 0 {
 			t.Errorf("expected error and no item added to cache: %v, err: %v", len(cache.store), err)
 		}
@@ -261,23 +254,23 @@ func TestApiParseBodyError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	api := pokeapi.PokeApi{BaseUrl: ts.URL}
+	api := pokeapi.NewPokeApi(ts.URL, cache)
 
 	t.Run("returns GetPokemon error", func(t *testing.T) {
-		_, err := api.GetPokemon("pikachu", cache)
+		_, err := api.GetPokemon("pikachu")
 		if err == nil || len(cache.store) > 0 {
 			t.Errorf("expected error and no item added to cache: %v, err: %v", len(cache.store), err)
 		}
 	})
 	t.Run("returns GetLocationArea error", func(t *testing.T) {
-		_, err := api.GetLocationArea(0, cache)
+		_, err := api.GetLocationArea(0)
 		if err == nil || len(cache.store) > 0 {
 			t.Errorf("expected error and no item added to cache: %v, err: %v", len(cache.store), err)
 		}
 	})
 
 	t.Run("returns GetLocationAreaDetails error", func(t *testing.T) {
-		_, err := api.GetLocationAreaDetails("canalave-city-area", cache)
+		_, err := api.GetLocationAreaDetails("canalave-city-area")
 		if err == nil || len(cache.store) > 0 {
 			t.Errorf("expected error and no item added to cache: %v, err: %v", len(cache.store), err)
 		}
@@ -295,23 +288,23 @@ func TestApiHttpReadBodyError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	api := pokeapi.PokeApi{BaseUrl: ts.URL}
+	api := pokeapi.NewPokeApi(ts.URL, cache)
 
 	t.Run("returns GetPokemon error", func(t *testing.T) {
-		_, err := api.GetPokemon("pikachu", cache)
+		_, err := api.GetPokemon("pikachu")
 		if err == nil || len(cache.store) > 0 {
 			t.Errorf("expected error and no item added to cache: %v, err: %v", len(cache.store), err)
 		}
 	})
 	t.Run("returns GetLocationArea error", func(t *testing.T) {
-		_, err := api.GetLocationArea(0, cache)
+		_, err := api.GetLocationArea(0)
 		if err == nil || len(cache.store) > 0 {
 			t.Errorf("expected error and no item added to cache: %v, err: %v", len(cache.store), err)
 		}
 	})
 
 	t.Run("returns GetLocationAreaDetails error", func(t *testing.T) {
-		_, err := api.GetLocationAreaDetails("canalave-city-area", cache)
+		_, err := api.GetLocationAreaDetails("canalave-city-area")
 		if err == nil || len(cache.store) > 0 {
 			t.Errorf("expected error and no item added to cache: %v, err: %v", len(cache.store), err)
 		}
@@ -326,23 +319,23 @@ func TestApiNetworkError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	api := pokeapi.PokeApi{BaseUrl: "http://invalid.localhost/"}
+	api := pokeapi.NewPokeApi("http://invalid.localhost/", cache)
 
 	t.Run("returns GetPokemon error", func(t *testing.T) {
-		_, err := api.GetPokemon("pikachu", cache)
+		_, err := api.GetPokemon("pikachu")
 		if err == nil || len(cache.store) > 0 {
 			t.Errorf("expected error and no item added to cache: %v, err: %v", len(cache.store), err)
 		}
 	})
 	t.Run("returns GetLocationArea error", func(t *testing.T) {
-		_, err := api.GetLocationArea(0, cache)
+		_, err := api.GetLocationArea(0)
 		if err == nil || len(cache.store) > 0 {
 			t.Errorf("expected error and no item added to cache: %v, err: %v", len(cache.store), err)
 		}
 	})
 
 	t.Run("returns GetLocationAreaDetails error", func(t *testing.T) {
-		_, err := api.GetLocationAreaDetails("canalave-city-area", cache)
+		_, err := api.GetLocationAreaDetails("canalave-city-area")
 		if err == nil || len(cache.store) > 0 {
 			t.Errorf("expected error and no item added to cache: %v, err: %v", len(cache.store), err)
 		}

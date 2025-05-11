@@ -10,7 +10,6 @@ import (
 
 	"github.com/leobel/pokedexcli/internal/commands"
 	"github.com/leobel/pokedexcli/internal/pokeapi"
-	"github.com/leobel/pokedexcli/internal/pokecache"
 	"github.com/leobel/pokedexcli/internal/repl"
 )
 
@@ -34,40 +33,42 @@ func (c *mockCache) Stop() {
 }
 
 // --- Mock API ---
-type mockApi struct {
+type mockApi[T mockCache] struct {
 	baseUrl                 string
 	config                  pokeapi.Config
+	cache                   *T
 	getPokemonResponse      *pokeapi.Pokemon
 	getLocationDetailsError error
 	locationDetailsResp     *pokeapi.LocationAreaDetailsResponse
 	locationAreaResponses   map[int]*pokeapi.LocationAreaResponse
 }
 
-func newMockApi(url string, config pokeapi.Config) *mockApi {
-	return &mockApi{
+func newMockApi[T mockCache](url string, cache *T, config pokeapi.Config) *mockApi[T] {
+	return &mockApi[T]{
 		baseUrl:               url,
 		config:                config,
+		cache:                 cache,
 		locationAreaResponses: map[int]*pokeapi.LocationAreaResponse{},
 	}
 }
 
-func (api *mockApi) GetBaseUrl() string {
+func (api *mockApi[T]) GetBaseUrl() string {
 	return api.baseUrl
 }
 
-func (api *mockApi) GetConfig() pokeapi.Config {
+func (api *mockApi[T]) GetConfig() pokeapi.Config {
 	return api.config
 }
 
-func (m *mockApi) GetPokemon(name string, cache pokecache.Cache) (*pokeapi.Pokemon, error) {
+func (m *mockApi[T]) GetPokemon(name string) (*pokeapi.Pokemon, error) {
 	return m.getPokemonResponse, nil
 }
 
-func (m *mockApi) GetLocationAreaDetails(area string, cache pokecache.Cache) (*pokeapi.LocationAreaDetailsResponse, error) {
+func (m *mockApi[T]) GetLocationAreaDetails(area string) (*pokeapi.LocationAreaDetailsResponse, error) {
 	return m.locationDetailsResp, m.getLocationDetailsError
 }
 
-func (m *mockApi) GetLocationArea(offset int, cache pokecache.Cache) (*pokeapi.LocationAreaResponse, error) {
+func (m *mockApi[T]) GetLocationArea(offset int) (*pokeapi.LocationAreaResponse, error) {
 	if resp, ok := m.locationAreaResponses[offset]; ok {
 		return resp, nil
 	}
@@ -138,7 +139,7 @@ func TestCommandHelp(t *testing.T) {
 
 func TestCommandMapNextPrevious(t *testing.T) {
 	cache := newMockCache()
-	api := newMockApi("url", pokeapi.Config{})
+	api := newMockApi("url", cache, pokeapi.Config{})
 
 	// simulate two pages
 	api.locationAreaResponses[0] = &pokeapi.LocationAreaResponse{
@@ -167,7 +168,7 @@ func TestCommandMapNextPrevious(t *testing.T) {
 	}
 
 	// build and test forward
-	cm := commands.NewCommandMap(api, cache)
+	cm := commands.NewCommandMap[*mockCache](api)
 	out := captureStdout(func() {
 		if err := cm.NextArea()(); err != nil {
 			t.Fatal(err)
@@ -204,7 +205,7 @@ func TestCommandMapNextPrevious(t *testing.T) {
 
 func TestCommandMapExplore(t *testing.T) {
 	cache := newMockCache()
-	api := newMockApi("url", pokeapi.Config{})
+	api := newMockApi("url", cache, pokeapi.Config{})
 	api.locationDetailsResp = &pokeapi.LocationAreaDetailsResponse{
 		PokemonEncounters: []pokeapi.PokemonEncounters{
 			{
@@ -218,7 +219,7 @@ func TestCommandMapExplore(t *testing.T) {
 		},
 	}
 
-	cm := commands.NewCommandMap(api, cache)
+	cm := commands.NewCommandMap[*mockCache](api)
 
 	out := captureStdout(func() {
 		if err := cm.ExploreArea("some-area"); err != nil {
@@ -236,7 +237,7 @@ func TestCommandMapExplore(t *testing.T) {
 
 func TestCommandPokedex_ShowInspectCatch(t *testing.T) {
 	cache := newMockCache()
-	api := newMockApi("url", pokeapi.Config{})
+	api := newMockApi("url", cache, pokeapi.Config{})
 	api.getPokemonResponse = &pokeapi.Pokemon{
 		Name:           "Pikachu",
 		BaseExperience: 112,
@@ -278,7 +279,7 @@ func TestCommandPokedex_ShowInspectCatch(t *testing.T) {
 		},
 	}
 
-	cp := commands.NewCommandPokedex(api, cache, commands.WithPokemonCatcher(AlwaysCatch{}))
+	cp := commands.NewCommandPokedex(api, commands.WithPokemonCatcher[*mockCache](AlwaysCatch{}))
 
 	// show empty first
 	out0 := captureStdout(func() {

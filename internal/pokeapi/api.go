@@ -375,45 +375,48 @@ func WithLimit(limit int) limitOption {
 	return limitOption(limit)
 }
 
-type Api interface {
-	GetPokemon(name string, cache pokecache.Cache) (*Pokemon, error)
-	GetLocationAreaDetails(area string, cache pokecache.Cache) (*LocationAreaDetailsResponse, error)
-	GetLocationArea(offset int, cache pokecache.Cache) (*LocationAreaResponse, error)
+type Api[T pokecache.Cache] interface {
+	GetPokemon(name string) (*Pokemon, error)
+	GetLocationAreaDetails(area string) (*LocationAreaDetailsResponse, error)
+	GetLocationArea(offset int) (*LocationAreaResponse, error)
 	GetBaseUrl() string
 	GetConfig() Config
 }
 
-type PokeApi struct {
+type PokeApi[T pokecache.Cache] struct {
 	BaseUrl string // e.g: https://pokeapi.co/api/v2
 	Config  Config
+	Cache   T
 }
 
-func NewPokeApi(url string, opts ...Option) PokeApi {
+func NewPokeApi[T pokecache.Cache](url string, cache T, opts ...Option) PokeApi[T] {
 	config := Config{
 		Limit: 20,
 	}
+
 	// apply any override option
 	for _, opt := range opts {
 		opt.apply(&config)
 	}
 
-	return PokeApi{
+	return PokeApi[T]{
 		BaseUrl: url,
 		Config:  config,
+		Cache:   cache,
 	}
 }
 
-func (api PokeApi) GetBaseUrl() string {
+func (api PokeApi[T]) GetBaseUrl() string {
 	return api.BaseUrl
 }
 
-func (api PokeApi) GetConfig() Config {
+func (api PokeApi[T]) GetConfig() Config {
 	return api.Config
 }
 
-func (api PokeApi) GetPokemon(name string, cache pokecache.Cache) (*Pokemon, error) {
+func (api PokeApi[T]) GetPokemon(name string) (*Pokemon, error) {
 	url := fmt.Sprintf("%s/pokemon/%s", api.BaseUrl, name)
-	data, exist := cache.Get(url)
+	data, exist := api.Cache.Get(url)
 	if exist {
 		return getResponse[Pokemon](data)
 	} else {
@@ -425,14 +428,14 @@ func (api PokeApi) GetPokemon(name string, cache pokecache.Cache) (*Pokemon, err
 		if err != nil {
 			return nil, err
 		}
-		cache.Add(url, res)
+		api.Cache.Add(url, res)
 		return response, nil
 	}
 }
 
-func (api PokeApi) GetLocationAreaDetails(area string, cache pokecache.Cache) (*LocationAreaDetailsResponse, error) {
+func (api PokeApi[T]) GetLocationAreaDetails(area string) (*LocationAreaDetailsResponse, error) {
 	url := fmt.Sprintf("%s/location-area/%s", api.BaseUrl, area)
-	data, exist := cache.Get(url)
+	data, exist := api.Cache.Get(url)
 	if exist {
 		return getResponse[LocationAreaDetailsResponse](data)
 	} else {
@@ -444,14 +447,14 @@ func (api PokeApi) GetLocationAreaDetails(area string, cache pokecache.Cache) (*
 		if err != nil {
 			return nil, err
 		}
-		cache.Add(url, res)
+		api.Cache.Add(url, res)
 		return response, nil
 	}
 }
 
-func (api PokeApi) GetLocationArea(offset int, cache pokecache.Cache) (*LocationAreaResponse, error) {
+func (api PokeApi[T]) GetLocationArea(offset int) (*LocationAreaResponse, error) {
 	url := fmt.Sprintf("%s/location-area?offset=%d&limit=%d", api.BaseUrl, offset, api.Config.Limit)
-	data, exist := cache.Get(url)
+	data, exist := api.Cache.Get(url)
 	if exist {
 		return getResponse[LocationAreaResponse](data)
 	} else {
@@ -463,12 +466,12 @@ func (api PokeApi) GetLocationArea(offset int, cache pokecache.Cache) (*Location
 		if err != nil {
 			return nil, err
 		}
-		cache.Add(url, res)
+		api.Cache.Add(url, res)
 		return response, nil
 	}
 }
 
-func (api PokeApi) requestApi(url string) ([]byte, error) {
+func (api PokeApi[T]) requestApi(url string) ([]byte, error) {
 	res, err := http.Get(url)
 	if err != nil {
 		return nil, err

@@ -17,20 +17,20 @@ type PokedexPokemonCatcher struct {
 	lambda float64
 }
 
-type CatcherOption interface {
-	apply(cp *CommandPokedex)
+type CatcherOption[T pokecache.Cache] interface {
+	apply(cp *CommandPokedex[T])
 }
 
-type PokemonCatcherOption struct {
+type PokemonCatcherOption[T pokecache.Cache] struct {
 	catcher PokemonCatcher
 }
 
-func (c PokemonCatcherOption) apply(cp *CommandPokedex) {
+func (c PokemonCatcherOption[T]) apply(cp *CommandPokedex[T]) {
 	cp.Catcher = c.catcher
 }
 
-func WithPokemonCatcher(catcher PokemonCatcher) CatcherOption {
-	return PokemonCatcherOption{catcher}
+func WithPokemonCatcher[T pokecache.Cache](catcher PokemonCatcher) CatcherOption[T] {
+	return PokemonCatcherOption[T]{catcher}
 }
 
 func (c PokedexPokemonCatcher) TryToCatch(pokemon pokeapi.Pokemon) bool {
@@ -38,18 +38,16 @@ func (c PokedexPokemonCatcher) TryToCatch(pokemon pokeapi.Pokemon) bool {
 	return rand.Float64() < math.Exp(-c.lambda*float64(experience))
 }
 
-type CommandPokedex struct {
+type CommandPokedex[T pokecache.Cache] struct {
 	Pokemons map[string]pokeapi.Pokemon
-	Api      pokeapi.Api
-	Cache    pokecache.Cache
+	Api      pokeapi.Api[T]
 	Catcher  PokemonCatcher
 }
 
-func NewCommandPokedex(api pokeapi.Api, cache pokecache.Cache, catcherOpts ...CatcherOption) *CommandPokedex {
-	pokedex := &CommandPokedex{
+func NewCommandPokedex[T pokecache.Cache](api pokeapi.Api[T], catcherOpts ...CatcherOption[T]) *CommandPokedex[T] {
+	pokedex := &CommandPokedex[T]{
 		Pokemons: map[string]pokeapi.Pokemon{},
 		Api:      api,
-		Cache:    cache,
 		Catcher:  PokedexPokemonCatcher{lambda: 0.005},
 	}
 	for _, opt := range catcherOpts {
@@ -59,7 +57,7 @@ func NewCommandPokedex(api pokeapi.Api, cache pokecache.Cache, catcherOpts ...Ca
 	return pokedex
 }
 
-func (c *CommandPokedex) ShowPokemons(...string) error {
+func (c *CommandPokedex[T]) ShowPokemons(...string) error {
 	fmt.Println("Your Pokedex:")
 	for _, pokemon := range c.Pokemons {
 		fmt.Printf(" - %s\n", pokemon.Name)
@@ -67,10 +65,10 @@ func (c *CommandPokedex) ShowPokemons(...string) error {
 	return nil
 }
 
-func (c *CommandPokedex) CatchPokemon(params ...string) error {
+func (c *CommandPokedex[T]) CatchPokemon(params ...string) error {
 	name := params[0]
 	fmt.Printf("Throwing a Pokeball at %s...\n", name)
-	pokemon, err := c.Api.GetPokemon(name, c.Cache)
+	pokemon, err := c.Api.GetPokemon(name)
 	if err != nil {
 		return err
 	}
@@ -84,7 +82,7 @@ func (c *CommandPokedex) CatchPokemon(params ...string) error {
 	return nil
 }
 
-func (c *CommandPokedex) InspectPokemon(params ...string) error {
+func (c *CommandPokedex[T]) InspectPokemon(params ...string) error {
 	name := params[0]
 	pokemon, ok := c.Pokemons[name]
 	if !ok {

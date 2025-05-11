@@ -15,13 +15,13 @@ import (
 var supportedCommands map[string]repl.CliCommand
 
 func main() {
-	cache := pokecache.NewCache(10 * time.Second)
-	api := pokeapi.NewPokeApi("https://pokeapi.co/api/v2")
+	cache := pokecache.NewPokeCache(10 * time.Second)
+	api := pokeapi.NewPokeApi("https://pokeapi.co/api/v2", cache)
 
 	helpCmd := commands.NewCommandHelp(&supportedCommands)
-	exitCmd := commands.NewCommandExit(cache)
-	mapCmd := commands.NewCommandMap(api, cache)
-	pokedexCmd := commands.NewCommandPokedex(api, cache)
+	exitCmd := commands.NewCommandExit(api.Cache)
+	mapCmd := commands.NewCommandMap[pokecache.Cache](api)
+	pokedexCmd := commands.NewCommandPokedex[pokecache.Cache](api)
 
 	supportedCommands = map[string]repl.CliCommand{
 		"exit": {

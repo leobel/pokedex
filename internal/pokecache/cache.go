@@ -5,6 +5,24 @@ import (
 	"time"
 )
 
+type Entry interface {
+	Compare(time.Time) int
+	GetVal() []byte
+}
+
+type PokeEntry struct {
+	CreatedAt time.Time
+	Val       []byte
+}
+
+func (e PokeEntry) Compare(t time.Time) int {
+	return e.CreatedAt.Compare(t)
+}
+
+func (e PokeEntry) GetVal() []byte {
+	return e.Val
+}
+
 type Cache interface {
 	Get(key string) ([]byte, bool)
 	Add(key string, val []byte)
@@ -12,20 +30,15 @@ type Cache interface {
 }
 
 type PokeCache struct {
-	items map[string]cacheEntry
+	items map[string]PokeEntry
 	done  chan bool
 	wg    sync.WaitGroup
 	mux   *sync.RWMutex
 }
 
-type cacheEntry struct {
-	createdAt time.Time
-	val       []byte
-}
-
-func NewCache(interval time.Duration) *PokeCache {
+func NewPokeCache(interval time.Duration) *PokeCache {
 	cache := &PokeCache{
-		items: make(map[string]cacheEntry),
+		items: make(map[string]PokeEntry),
 		done:  make(chan bool),
 		mux:   &sync.RWMutex{},
 	}
@@ -35,20 +48,24 @@ func NewCache(interval time.Duration) *PokeCache {
 }
 
 func (c *PokeCache) Add(key string, val []byte) {
-	c.mux.Lock()
-	c.items[key] = cacheEntry{
-		createdAt: time.Now(),
-		val:       val,
-	}
-	c.mux.Unlock()
+	withWriteLock(c.mux, func() {
+		c.items[key] = PokeEntry{time.Now(), val}
+	})
+}
+
+// tuple wrapper
+type GetResult struct {
+	entry Entry
+	ok    bool
 }
 
 func (c *PokeCache) Get(key string) ([]byte, bool) {
-	c.mux.RLock()
-	entry, ok := c.items[key]
-	c.mux.RUnlock()
-	if ok {
-		return entry.val, true
+	r := withReadLock(c.mux, func() GetResult {
+		entry, ok := c.items[key]
+		return GetResult{entry, ok}
+	})
+	if r.ok {
+		return r.entry.GetVal(), true
 	} else {
 		return nil, false
 	}
@@ -57,7 +74,9 @@ func (c *PokeCache) Get(key string) ([]byte, bool) {
 func (c *PokeCache) Stop() {
 	close(c.done)
 	c.wg.Wait()
-	c.items = map[string]cacheEntry{}
+	withWriteLock(c.mux, func() {
+		c.items = map[string]PokeEntry{}
+	})
 }
 
 func (c *PokeCache) reapLoop(interval time.Duration) {
@@ -74,15 +93,26 @@ func (c *PokeCache) reapLoop(interval time.Duration) {
 			c.cleanCache(threshold)
 		}
 	}
-
 }
 
 func (c *PokeCache) cleanCache(t time.Time) {
-	c.mux.RLock()
-	for key, entry := range c.items {
-		if entry.createdAt.Compare(t) <= 0 {
-			delete(c.items, key)
+	withWriteLock(c.mux, func() {
+		for key, entry := range c.items {
+			if entry.Compare(t) <= 0 {
+				delete(c.items, key)
+			}
 		}
-	}
-	c.mux.RUnlock()
+	})
+}
+
+func withReadLock[T any](mux *sync.RWMutex, f func() T) T {
+	mux.RLock()
+	defer mux.RUnlock()
+	return f()
+}
+
+func withWriteLock(mux *sync.RWMutex, f func()) {
+	mux.Lock()
+	defer mux.Unlock()
+	f()
 }

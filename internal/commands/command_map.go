@@ -10,23 +10,21 @@ import (
 	"github.com/leobel/pokedexcli/internal/pokecache"
 )
 
-type CommandMap struct {
+type CommandMap[T pokecache.Cache] struct {
 	Previous *string
 	Next     *string
-	Api      pokeapi.Api
-	Cache    pokecache.Cache
+	Api      pokeapi.Api[T]
 }
 
-func NewCommandMap(api pokeapi.Api, cache pokecache.Cache) *CommandMap {
+func NewCommandMap[T pokecache.Cache](api pokeapi.Api[T]) *CommandMap[T] {
 	next := fmt.Sprintf("%s/location-area?offset=%d&limit=%d", api.GetBaseUrl(), 0, api.GetConfig().Limit)
-	return &CommandMap{
-		Next:  &next,
-		Api:   api,
-		Cache: cache,
+	return &CommandMap[T]{
+		Next: &next,
+		Api:  api,
 	}
 }
 
-func (c *CommandMap) PreviousArea() func(...string) error {
+func (c *CommandMap[T]) PreviousArea() func(...string) error {
 	return func(...string) error {
 		if c.Previous != nil {
 			return c.request(*c.Previous)
@@ -37,7 +35,7 @@ func (c *CommandMap) PreviousArea() func(...string) error {
 	}
 }
 
-func (c *CommandMap) NextArea() func(...string) error {
+func (c *CommandMap[T]) NextArea() func(...string) error {
 	return func(...string) error {
 		if c.Next != nil {
 			return c.request(*c.Next)
@@ -48,13 +46,13 @@ func (c *CommandMap) NextArea() func(...string) error {
 	}
 }
 
-func (c *CommandMap) ExploreArea(params ...string) error {
+func (c *CommandMap[T]) ExploreArea(params ...string) error {
 	if len(params) == 0 {
 		return errors.New("invalid: no area to explore")
 	}
 	area := params[0]
 	fmt.Println("Exploring pastoria-city-area...")
-	response, err := c.Api.GetLocationAreaDetails(area, c.Cache)
+	response, err := c.Api.GetLocationAreaDetails(area)
 	if err != nil {
 		return err
 	}
@@ -66,7 +64,7 @@ func (c *CommandMap) ExploreArea(params ...string) error {
 	return nil
 }
 
-func (c *CommandMap) request(rawUrl string) error {
+func (c *CommandMap[T]) request(rawUrl string) error {
 	parsedUrl, err := url.Parse(rawUrl)
 	if err != nil {
 		panic(err)
@@ -76,7 +74,7 @@ func (c *CommandMap) request(rawUrl string) error {
 	if err != nil {
 		return err
 	}
-	response, err := c.Api.GetLocationArea(offset, c.Cache)
+	response, err := c.Api.GetLocationArea(offset)
 	if err != nil {
 		return err
 	}
